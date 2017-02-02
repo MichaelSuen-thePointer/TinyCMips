@@ -86,7 +86,6 @@ class expression : public base
 {
 public:
     virtual bool is_constant_expression() = 0;
-    virtual type* get_type() = 0;
 };
 
 class unary_expression : public expression
@@ -100,6 +99,10 @@ class binary_expression : public expression
 public:
     expression* lhs;
     expression* rhs;
+    bool is_constant_expression() final override
+    {
+        return lhs->is_constant_expression() && rhs->is_constant_expression();
+    }
 };
 
 class primary_expression : public expression
@@ -293,11 +296,6 @@ public:
 
 class multiplicative_expression : public binary_expression
 {
-public:
-    bool is_constant_expression() final override
-    {
-        return lhs->is_constant_expression() && rhs->is_constant_expression();
-    }
 };
 
 class multiplication : public multiplicative_expression
@@ -314,11 +312,7 @@ class moderation : public multiplicative_expression
 
 class additive_expression : public binary_expression
 {
-public:
-    bool is_constant_expression() final override
-    {
-        return lhs->is_constant_expression() && rhs->is_constant_expression();
-    }
+
 };
 
 class addition : public additive_expression
@@ -334,10 +328,6 @@ class subtraction : public additive_expression
 class shift_expression : public binary_expression
 {
 public:
-    bool is_constant_expression() override
-    {
-        return lhs->is_constant_expression() && rhs->is_constant_expression();
-    }
 };
 
 class left_shift : public shift_expression
@@ -357,27 +347,94 @@ class logical_right_shift : public shift_expression
 
 class relational_expression : public binary_expression
 {
-    
+
 };
 
 class less_than : public relational_expression
 {
-    
+
 };
 
 class greater_than : public relational_expression
 {
-    
+
 };
 
 class less_equal : public relational_expression
 {
-    
+
 };
 
 class greater_equal : public relational_expression
 {
-    
+
+};
+
+class equality_expression : public binary_expression
+{
+
+};
+
+class equals_to : public equality_expression
+{
+
+};
+
+class not_equals_to : public equality_expression
+{
+
+};
+
+class bitwise_and : public binary_expression
+{
+
+};
+
+class bitwise_exclusive_or : public binary_expression
+{
+
+};
+
+class bitwise_inclusive_or : public binary_expression
+{
+
+};
+
+class logical_and : public binary_expression
+{
+
+};
+
+class logical_or : public binary_expression
+{
+
+};
+
+class condition : public expression
+{
+public:
+    expression* condition;
+    expression* true_branch;
+    expression* false_branch;
+
+    bool is_constant_expression() override
+    {
+        return condition->is_constant_expression() &&
+            true_branch->is_constant_expression() &&
+            false_branch->is_constant_expression();
+    }
+};
+
+class assignment_expression : public expression
+{
+public:
+    expression* lhs;
+    expression* rhs;
+
+    bool is_constant_expression() override
+    {
+        return false;
+    }
 };
 
 class basic_type : public type

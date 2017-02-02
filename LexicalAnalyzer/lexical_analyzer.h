@@ -63,8 +63,8 @@ enum class token_type
     shr,
     bit_and,
     bit_or,
-    and_,
-    or_ ,
+    logical_and,
+    logical_or ,
     xor_,
     bit_not,
     not_,
@@ -122,8 +122,8 @@ const char* token_type_strs[] =
     "shr",
     "bit_and",
     "bit_or",
-    "and_",
-    "or_ ",
+    "logical_and",
+    "logical_or ",
     "xor_",
     "bit_not",
     "not_",
@@ -360,9 +360,9 @@ private:
                 case '=':
                     return parse_token_if_follows_else('=', token_type::eq, token_type::assign);
                 case '&':
-                    return parse_token_if_follows_else('&', token_type::and_, token_type::bit_and);
+                    return parse_token_if_follows_else('&', token_type::logical_and, token_type::bit_and);
                 case '|':
-                    return parse_token_if_follows_else('|', token_type:: or_ , token_type::bit_or);
+                    return parse_token_if_follows_else('|', token_type:: logical_or , token_type::bit_or);
                 case '+':
                     return parse_token_if_follows_else('+', token_type::inc, token_type::plus);
                 case '-':

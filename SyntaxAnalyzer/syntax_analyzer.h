@@ -37,8 +37,7 @@ public:
 
     pooled_object<expression, base> parse_expression()
     {
-        //TODO: finish it
-        return nullptr;
+        return parse_conditional_expression();
     }
 
     pooled_object<constant, base> parse_constant()
@@ -66,13 +65,122 @@ public:
         }
     }
 
+    pooled_object<expression, base> parse_conditional_expression()
+    {
+        auto cond = parse_logical_or_expression();
+        if (lex.peek().type == token_type::question_mark)
+        {
+            lex.next();
+            pooled_object<condition, base> e = make_pooled_object<condition>();
+            e->condition = e.merge(cond);
+            e->true_branch = e.merge(parse_expression());
+            e->false_branch = e.merge(parse_conditional_expression());
+            return std::move(e);
+        }
+        return cond;
+    }
+
+    pooled_object<expression, base> parse_logical_or_expression()
+    {
+        auto result = parse_logical_and_expression();
+        while (lex.peek().type == token_type::logical_or)
+        {
+            lex.next();
+            pooled_object<logical_or, base> e = make_pooled_object<logical_or>();
+            e->lhs = e.merge(result);
+            e->rhs = e.merge(parse_logical_and_expression());
+            result = std::move(e);
+        }
+        return result;
+    }
+
+    pooled_object<expression, base> parse_logical_and_expression()
+    {
+        auto result = parse_bitwise_inclusive_or_expression();
+        while (lex.peek().type == token_type::logical_and)
+        {
+            lex.next();
+            pooled_object<logical_and, base> e = make_pooled_object<logical_and>();
+            e->lhs = e.merge(result);
+            e->rhs = e.merge(parse_bitwise_inclusive_or_expression());
+            result = std::move(e);
+        }
+        return result;
+    }
+
+    pooled_object<expression, base> parse_bitwise_inclusive_or_expression()
+    {
+        auto result = parse_bitwise_exclusive_or_expression();
+        while (lex.peek().type == token_type::bit_or)
+        {
+            lex.next();
+            pooled_object<bitwise_inclusive_or, base> e = make_pooled_object<bitwise_inclusive_or>();
+            e->lhs = e.merge(result);
+            e->rhs = e.merge(parse_bitwise_exclusive_or_expression());
+            result = std::move(e);
+        }
+        return result;
+    }
+
+    pooled_object<expression, base> parse_bitwise_exclusive_or_expression()
+    {
+        auto result = parse_bitwise_and_expression();
+        while (lex.peek().type == token_type::xor_)
+        {
+            lex.next();
+            pooled_object<bitwise_exclusive_or, base> e = make_pooled_object<bitwise_exclusive_or>();
+            e->lhs = e.merge(result);
+            e->rhs = e.merge(parse_bitwise_and_expression());
+            result = std::move(e);
+        }
+        return result;
+    }
+
+    pooled_object<expression, base> parse_bitwise_and_expression()
+    {
+        auto result = parse_equlity_expression();
+        while (lex.peek().type == token_type::bit_and)
+        {
+            lex.next();
+            pooled_object<bitwise_and, base> e = make_pooled_object<bitwise_and>();
+            e->lhs = e.merge(result);
+            e->rhs = e.merge(parse_equlity_expression());
+            result = std::move(e);
+        }
+        return result;
+    }
+
+    pooled_object<expression, base> parse_equlity_expression()
+    {
+        auto result = parse_relational_expression();
+        for (;;)
+        {
+            pooled_object<equality_expression, base> e;
+            switch (lex.peek().type)
+            {
+            case token_type::eq:
+                e = make_pooled_object<equals_to>();
+                break;
+            case token_type::ne:
+                e = make_pooled_object<not_equals_to>();
+                break;
+            default:
+                return result;
+            }
+            lex.next();
+            e->lhs = e.merge(result);
+            e->rhs = e.merge(parse_relational_expression());
+            result = std::move(e);
+        }
+    }
+
     pooled_object<expression, base> parse_relational_expression()
     {
         auto result = parse_shift_expression();
-        for(;;)
+        for (;;)
         {
             pooled_object<relational_expression, base> e;
-            switch(lex.peek().type)
+            switch (lex.peek().type)
             {
             case token_type::lt:
                 e = make_pooled_object<less_than>();
