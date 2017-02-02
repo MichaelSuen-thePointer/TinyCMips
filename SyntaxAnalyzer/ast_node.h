@@ -108,6 +108,11 @@ class implicit_conversion : public expression
 public:
     expression* expr;
     type* target_type;
+
+    bool is_constant_expression() override
+    {
+        return expr->is_constant_expression();
+    }
 };
 
 class unary_expression : public expression

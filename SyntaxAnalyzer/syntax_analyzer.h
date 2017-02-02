@@ -35,7 +35,7 @@ public:
     }
 
     template<class T1, class T2>
-    void do_usual_arithmetic_conversion(pooled_object<T1, T2>& expr)
+    void do_implicit_conversion(pooled_object<T1, T2>& expr)
     {
         auto lType = expr->lhs->get_type(ctx);
         auto rType = expr->lhs->get_type(ctx);
@@ -43,7 +43,7 @@ public:
         auto lty = lType->kind();
         auto rty = rType->kind();
 
-        if (lty == type::arithmetic_type && rty == type::arithmetic_type)
+        if (lty & type::arithmetic_type && rty & type::arithmetic_type)
         {
             if (lType->rank() > rType->rank())
             {
@@ -58,6 +58,25 @@ public:
                 implicitConv->target_type = lType;
                 implicitConv->expr = expr->lhs;
                 expr->lhs = expr.merge(implicitConv);
+            }
+        }
+        if ((lty & type::array_type && rty & type::arithmetic_type) ||
+            (lty & type::arithmetic_type && rty & type::array_type))
+        {
+            pooled_object<implicit_conversion, base> implicitConv = make_pooled_object<implicit_conversion>();
+            if (lty == type::array_type)
+            {
+                auto ptrToElementType = std::make_unique<pointer_type>();
+                ptrToElementType->point_type = dynamic_cast<array_type*>(lType)->element_type;
+                implicitConv->target_type = implicitConv.adopt(ptrToElementType);
+                expr->lhs = expr.merge(implicitConv);
+            }
+            else
+            {
+                auto ptrToElementType = std::make_unique<pointer_type>();
+                ptrToElementType->point_type = dynamic_cast<array_type*>(rType)->element_type;
+                implicitConv->target_type = implicitConv.adopt(ptrToElementType);
+                expr->rhs = expr.merge(implicitConv);
             }
         }
     }
@@ -129,7 +148,7 @@ public:
             pooled_object<bitwise_inclusive_or, base> e = make_pooled_object<bitwise_inclusive_or>();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_bitwise_exclusive_or_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
         return result;
@@ -144,7 +163,7 @@ public:
             pooled_object<bitwise_exclusive_or, base> e = make_pooled_object<bitwise_exclusive_or>();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_bitwise_and_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
         return result;
@@ -159,7 +178,7 @@ public:
             pooled_object<bitwise_and, base> e = make_pooled_object<bitwise_and>();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_equlity_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
         return result;
@@ -185,7 +204,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_relational_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
     }
@@ -216,7 +235,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_shift_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
     }
@@ -245,7 +264,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_additive_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
     }
@@ -274,7 +293,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_multiplicative_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
     }
@@ -308,7 +327,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_cast_expression());
-            do_usual_arithmetic_conversion(e);
+            do_implicit_conversion(e);
             result = std::move(e);
         }
     }
@@ -423,10 +442,13 @@ public:
                 lex.next();
                 auto subscriptor = parse_expression();
                 expect(token_type::close_bracket);
-                pooled_object<array_subscription, base> res = make_pooled_object<array_subscription>();
-                res->expr = res.merge(result);
-                res->subscriptor = res.merge(subscriptor);
-                result = std::move(res);
+                pooled_object<addition, base> arithPlus = make_pooled_object<addition>();
+                arithPlus->lhs = arithPlus.merge(result);
+                arithPlus->rhs = arithPlus.merge(subscriptor);
+                do_implicit_conversion(arithPlus);
+                pooled_object<indirection, base> deref = make_pooled_object<indirection>();
+                deref->expr = deref.merge(arithPlus);
+                result = std::move(deref);
             }
             default:
                 return result;
@@ -490,7 +512,7 @@ public:
                 return make_pooled_object<unsigned_int>();
             case token_type::type_char:
                 lex.next();
-                return make_pooled_object<unsigned char>();
+                return make_pooled_object<unsigned_char>();
             }
         }
         break;
