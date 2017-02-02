@@ -14,7 +14,21 @@ public:
 class type : public base
 {
 public:
+    enum kind
+    {
+        arithmetic_type = 1,
+        pointer_type = 2,
+        array_type = 4,
+        function_type = 8,
+        void_type = 16,
+        unsigned_type = 32,
+    };
     virtual void set_innermost_type(type* type) = 0;
+    virtual kind kind() = 0;
+    virtual int rank()
+    {
+        return 0;
+    }
 };
 
 class parsing_context
@@ -86,6 +100,14 @@ class expression : public base
 {
 public:
     virtual bool is_constant_expression() = 0;
+    virtual type* get_type(const parsing_context& ctx) { return nullptr; /*TODO: supress compiler error*/ }
+};
+
+class implicit_conversion : public expression
+{
+public:
+    expression* expr;
+    type* target_type;
 };
 
 class unary_expression : public expression
@@ -283,7 +305,7 @@ public:
     }
 };
 
-class cast_expression : public expression
+class explicit_cast : public expression
 {
 public:
     type* target_type;
@@ -335,12 +357,7 @@ class left_shift : public shift_expression
 
 };
 
-class arithmetic_right_shift : public shift_expression
-{
-
-};
-
-class logical_right_shift : public shift_expression
+class right_shift : public shift_expression
 {
 
 };
@@ -410,21 +427,7 @@ class logical_or : public binary_expression
 
 };
 
-class condition : public expression
-{
-public:
-    expression* condition;
-    expression* true_branch;
-    expression* false_branch;
-
-    bool is_constant_expression() override
-    {
-        return condition->is_constant_expression() &&
-            true_branch->is_constant_expression() &&
-            false_branch->is_constant_expression();
-    }
-};
-
+/*
 class assignment_expression : public expression
 {
 public:
@@ -436,34 +439,91 @@ public:
         return false;
     }
 };
+*/
 
 class basic_type : public type
 {
 public:
-    enum kind
-    {
-        sint,
-        uint,
-        char_,
-        schar,
-        uchar,
-        void_
-    } kind;
-
-    explicit basic_type(enum kind kind = void_)
-        : kind(kind)
-    {
-    }
-
-    void set_innermost_type(type* type) override
+    void set_innermost_type(type* type) final override
     {
         throw std::runtime_error("Error setting inner type for a basic type.");
     }
+
+    enum kind kind() override
+    {
+        return arithmetic_type;
+    }
 };
+
+class signed_int : public basic_type
+{
+public:
+    int rank() override
+    {
+        return 4;
+    }
+};
+
+class unsigned_int : public basic_type
+{
+public:
+    int rank() override
+    {
+        return 5;
+    }
+
+    enum kind kind() override
+    {
+        return static_cast<enum kind>(basic_type::kind() | unsigned_type);
+    }
+};
+
+class signed_char : public basic_type
+{
+public:
+    int rank() override
+    {
+        return 2;
+    }
+};
+
+class unsigned_char : public basic_type
+{
+public:
+    int rank() override
+    {
+        return 3;
+    }
+
+    enum kind kind() override
+    {
+        return static_cast<enum kind>(basic_type::kind() | unsigned_type);
+    }
+};
+
+class plain_char : public basic_type
+{
+public:
+    int rank() override
+    {
+        return 1;
+    }
+};
+
+class void_type : public basic_type
+{
+public:
+    enum kind kind() override
+    {
+        return kind::void_type;
+    }
+};
+
 class derived_type : public type
 {
 
 };
+
 class pointer_type : public derived_type
 {
 public:
@@ -484,6 +544,11 @@ public:
         {
             point_type->set_innermost_type(type);
         }
+    }
+
+    enum kind kind() override
+    {
+        return kind::pointer_type;
     }
 };
 
@@ -510,6 +575,11 @@ public:
             element_type->set_innermost_type(type);
         }
     }
+
+    enum kind kind() override
+    {
+        return kind::array_type;
+    }
 };
 
 class function_type : public derived_type
@@ -533,6 +603,11 @@ public:
         {
             return_type->set_innermost_type(type);
         }
+    }
+
+    enum kind kind() override
+    {
+        return kind::function_type;
     }
 };
 

@@ -3,7 +3,6 @@
 #include "ast_node.h"
 #include <cstdint>
 #include <algorithm>
-#include "../../../../../../../Program Files (x86)/Microsoft Visual Studio 14.0/VC/include/iso646.h"
 
 namespace mq
 {
@@ -35,9 +34,37 @@ public:
     {
     }
 
+    template<class T1, class T2>
+    void do_usual_arithmetic_conversion(pooled_object<T1, T2>& expr)
+    {
+        auto lType = expr->lhs->get_type(ctx);
+        auto rType = expr->lhs->get_type(ctx);
+
+        auto lty = lType->kind();
+        auto rty = rType->kind();
+
+        if (lty == type::arithmetic_type && rty == type::arithmetic_type)
+        {
+            if (lType->rank() > rType->rank())
+            {
+                auto implicitConv = make_pooled_object<implicit_conversion>();
+                implicitConv->target_type = rType;
+                implicitConv->expr = expr->rhs;
+                expr->rhs = expr.merge(implicitConv);
+            }
+            else if (lType->rank() < rType->rank())
+            {
+                auto implicitConv = make_pooled_object<implicit_conversion>();
+                implicitConv->target_type = lType;
+                implicitConv->expr = expr->lhs;
+                expr->lhs = expr.merge(implicitConv);
+            }
+        }
+    }
+
     pooled_object<expression, base> parse_expression()
     {
-        return parse_conditional_expression();
+        return parse_logical_or_expression();
     }
 
     pooled_object<constant, base> parse_constant()
@@ -64,22 +91,7 @@ public:
             error("Unexpected token in parsing constant", token);
         }
     }
-
-    pooled_object<expression, base> parse_conditional_expression()
-    {
-        auto cond = parse_logical_or_expression();
-        if (lex.peek().type == token_type::question_mark)
-        {
-            lex.next();
-            pooled_object<condition, base> e = make_pooled_object<condition>();
-            e->condition = e.merge(cond);
-            e->true_branch = e.merge(parse_expression());
-            e->false_branch = e.merge(parse_conditional_expression());
-            return std::move(e);
-        }
-        return cond;
-    }
-
+    
     pooled_object<expression, base> parse_logical_or_expression()
     {
         auto result = parse_logical_and_expression();
@@ -117,6 +129,7 @@ public:
             pooled_object<bitwise_inclusive_or, base> e = make_pooled_object<bitwise_inclusive_or>();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_bitwise_exclusive_or_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
         return result;
@@ -131,6 +144,7 @@ public:
             pooled_object<bitwise_exclusive_or, base> e = make_pooled_object<bitwise_exclusive_or>();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_bitwise_and_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
         return result;
@@ -145,6 +159,7 @@ public:
             pooled_object<bitwise_and, base> e = make_pooled_object<bitwise_and>();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_equlity_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
         return result;
@@ -170,6 +185,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_relational_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
     }
@@ -200,6 +216,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_shift_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
     }
@@ -219,7 +236,7 @@ public:
             break;
             case token_type::shr:
             {
-                //TODO: get context and finish it
+                e = make_pooled_object<right_shift>();
             }
             break;
             default:
@@ -228,6 +245,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_additive_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
     }
@@ -256,6 +274,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_multiplicative_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
     }
@@ -289,6 +308,7 @@ public:
             lex.next();
             e->lhs = e.merge(result);
             e->rhs = e.merge(parse_cast_expression());
+            do_usual_arithmetic_conversion(e);
             result = std::move(e);
         }
     }
@@ -300,7 +320,7 @@ public:
             pooled_object<expression, base> r;
             auto ty = parse_type();
             expect(token_type::close_parentheses);
-            pooled_object<cast_expression, base> e = make_pooled_object<cast_expression>();
+            pooled_object<explicit_cast, base> e = make_pooled_object<explicit_cast>();
             e->target_type = e.merge(ty);
             r = std::move(e);
             return r;
@@ -451,10 +471,10 @@ public:
             case token_type::type_int:
                 lex.next();
             default: //fall through
-                return make_pooled_object<basic_type>(basic_type::sint);
+                return make_pooled_object<signed_int>();
             case token_type::type_char:
                 lex.next();
-                return make_pooled_object<basic_type>(basic_type::schar);
+                return make_pooled_object<signed_char>();
             }
         }
         break;
@@ -467,27 +487,27 @@ public:
             case token_type::type_int:
                 lex.next();
             default: //fall through
-                return make_pooled_object<basic_type>(basic_type::uint);
+                return make_pooled_object<unsigned_int>();
             case token_type::type_char:
                 lex.next();
-                return make_pooled_object<basic_type>(basic_type::uchar);
+                return make_pooled_object<unsigned char>();
             }
         }
         break;
         case token_type::type_int:
         {
             lex.next();
-            return make_pooled_object<basic_type>(basic_type::sint);
+            return make_pooled_object<signed_int>();
         }
         case token_type::type_char:
         {
             lex.next();
-            return make_pooled_object<basic_type>(basic_type::char_);
+            return make_pooled_object<plain_char>();
         }
         case token_type::type_void:
         {
             lex.next();
-            return make_pooled_object<basic_type>(basic_type::void_);
+            return make_pooled_object<void_type>();
         }
         default:
         {
