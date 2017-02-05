@@ -71,15 +71,22 @@ public:
     }
 };
 
+class initializer : public base
+{
+    
+};
+
 class declaration : public base
 {
 public:
     mq::type* type;
     std::u32string name;
+    initializer* initializer;
 
     explicit declaration(const std::u32string& name = U"")
         : type{}
         , name(name)
+        , initializer()
     {
     }
 
@@ -101,6 +108,18 @@ class expression : public base
 public:
     virtual bool is_constant_expression() = 0;
     virtual type* get_type(const parsing_context& ctx) { return nullptr; /*TODO: supress compiler error*/ }
+};
+
+class expression_initializer : public initializer
+{
+public:
+    expression* expr;
+};
+
+class array_initializer : public initializer
+{
+public:
+    std::vector<initializer*> initializer_list;
 };
 
 class implicit_conversion : public expression
@@ -616,6 +635,51 @@ public:
     }
 };
 
+class statement : public base
+{
+};
 
+class compound_statement : public statement
+{
+public:
+    std::vector<declaration*> declaration_list;
+    std::vector<statement*> statement_list;
+};
+
+class expression_statement : public statement
+{
+public:
+    expression* expr;
+};
+
+class selection_statement : public statement
+{
+public:
+    expression* condition;
+    statement* ture_branch;
+    statement* false_branch;
+};
+
+class iteration_statement : public statement
+{
+public:
+    expression* condition;
+    statement* body;
+};
+
+class jump_statement : public statement
+{
+    
+};
+
+class break_statment : public jump_statement
+{
+    
+};
+
+class continue_statement : public jump_statement
+{
+    
+};
 
 }

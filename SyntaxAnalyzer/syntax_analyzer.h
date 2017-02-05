@@ -34,6 +34,153 @@ public:
     {
     }
 
+
+
+    pooled_object<statement, base> parse_statement()
+    {
+        switch (lex.peek().type)
+        {
+        case token_type::open_brace: //compound statement
+            return parse_compound_statement();
+        case token_type::keyword_if:
+            return parse_selection_statement();
+        case token_type::keyword_while:
+            return parse_iteration_statement();
+        case token_type::keyword_break:
+        case token_type::keyword_continue:
+            return parse_jump_statement();
+        default:
+            return parse_expression_statement();
+        }
+    }
+
+    pooled_object<declaration, base> parse_declaration()
+    {
+        auto name = parse_declaration_or_type<true>();
+        switch (lex.peek().type)
+        {
+        case token_type::semicolon:
+            lex.next();
+            break;
+        case token_type::assign:
+        {
+            lex.next();
+            auto initializer = parse_initializer();
+            name->initializer = name.merge(initializer);
+        }
+        break;
+        default:
+            error("Unexpected token in parsing declaration.", lex.peek());
+        }
+        return name;
+    }
+
+    pooled_object<initializer, base> parse_initializer()
+    {
+        if (lex.peek().type == token_type::open_brace)
+        {
+            lex.next();
+            pooled_object<array_initializer, base> list = make_pooled_object<array_initializer>();
+            while (lex.peek().type != token_type::close_brace)
+            {
+                list->initializer_list.push_back(list.merge(parse_initializer()));
+                if (lex.peek().type == token_type::colon)
+                {
+                    lex.next();
+                }
+            }
+            expect(token_type::close_brace);
+            return std::move(list);
+        }
+        else
+        {
+            pooled_object<expression_initializer, base> init = make_pooled_object<expression_initializer>();
+            init->expr = init.merge(parse_expression());
+            return std::move(init);
+        }
+    }
+
+    pooled_object<compound_statement, base> parse_compound_statement()
+    {
+        pooled_object<compound_statement, base> res = make_pooled_object<compound_statement>();
+        expect(token_type::open_brace);
+        while (lex.peek().type != token_type::close_brace)
+        {
+            switch (lex.peek().type)
+            {
+            case token_type::type_char:
+            case token_type::type_int:
+            case token_type::type_signed:
+            case token_type::type_unsigned:
+            case token_type::type_void:
+                res->declaration_list.push_back(res.merge(parse_declaration()));
+                continue;
+            default:;//fall through
+            }
+            break;
+        }
+        while (lex.peek().type != token_type::close_brace)
+        {
+            res->statement_list.push_back(res.merge(parse_statement()));
+        }
+        expect(token_type::close_brace);
+        return res;
+    }
+
+    pooled_object<jump_statement, base> parse_jump_statement()
+    {
+        switch (lex.peek().type)
+        {
+        case token_type::keyword_break:
+            return make_pooled_object<break_statment>();
+        case token_type::keyword_continue:
+            return make_pooled_object<continue_statement>();
+        default:
+            error("Unexpected token in parsing jump statement", lex.peek());
+        }
+    }
+
+    pooled_object<iteration_statement, base> parse_iteration_statement()
+    {
+        expect(token_type::keyword_while);
+        expect(token_type::open_parentheses);
+        auto cond = parse_expression();
+        expect(token_type::close_parentheses);
+        auto body = parse_statement();
+        pooled_object<iteration_statement, base> res = make_pooled_object<iteration_statement>();
+        res->condition = res.merge(cond);
+        res->body = res.merge(body);
+        return res;
+    }
+
+    pooled_object<selection_statement, base> parse_selection_statement()
+    {
+        pooled_object<selection_statement, base> stmt = make_pooled_object<selection_statement>();
+        expect(token_type::keyword_if);
+        expect(token_type::open_parentheses);
+        auto cond = parse_expression();
+        expect(token_type::close_parentheses);
+        auto ifBody = parse_statement();
+        stmt->condition = stmt.merge(cond);
+        stmt->ture_branch = stmt.merge(ifBody);
+        if (lex.peek().type == token_type::keyword_else)
+        {
+            lex.next();
+            auto elseBody = parse_statement();
+            stmt->false_branch = stmt.merge(elseBody);
+        }
+        return stmt;
+    }
+
+    pooled_object<expression_statement, base> parse_expression_statement()
+    {
+        auto expr = parse_expression();
+        expect(token_type::semicolon);
+        pooled_object<expression_statement, base> expstm = make_pooled_object<expression_statement>();
+        expstm->expr = expstm.merge(expr);
+        return expstm;
+    }
+
     template<class T1, class T2>
     void do_implicit_conversion(pooled_object<T1, T2>& expr)
     {
@@ -110,7 +257,7 @@ public:
             error("Unexpected token in parsing constant", token);
         }
     }
-    
+
     pooled_object<expression, base> parse_logical_or_expression()
     {
         auto result = parse_logical_and_expression();
@@ -550,7 +697,7 @@ public:
         return result;
     }
 
-    template<bool IsIdentifierAllowed>
+    template<bool IsIdentifierRequired>
     pooled_object<declaration, base> parse_declaration_or_type()
     {
         std::u32string name;
@@ -564,27 +711,27 @@ public:
         case token_type::type_signed:
         {
             auto type = parse_basic_type();
-            decl = parse_declaration_or_type<IsIdentifierAllowed>();
+            decl = parse_declaration_or_type<IsIdentifierRequired>();
             decl->set_innermost_type(decl.merge(type));
         }
         break;
         case token_type::asterisk:
         {
             lex.next();
-            decl = parse_declaration_or_type<IsIdentifierAllowed>();
+            decl = parse_declaration_or_type<IsIdentifierRequired>();
             decl->set_innermost_type(decl.emplace<pointer_type>());
         }
         break;
         case token_type::open_parentheses:
         {
             lex.next();
-            decl = parse_declaration_or_type<IsIdentifierAllowed>();
+            decl = parse_declaration_or_type<IsIdentifierRequired>();
             expect(token_type::close_parentheses);
         }
         break;
         case token_type::identifier:
         {
-            if (!IsIdentifierAllowed)
+            if (!IsIdentifierRequired)
             {
                 error("Unexpected identifier in parsing a type.", lex.peek());
             }
@@ -593,7 +740,7 @@ public:
         break;
         default://may be just a type, allow it
         {
-            if (IsIdentifierAllowed)
+            if (IsIdentifierRequired)
             {
                 error("Expected an identifer in parsing a declaration.", lex.peek());
             }
