@@ -34,8 +34,6 @@ public:
     {
     }
 
-
-
     pooled_object<statement, base> parse_statement()
     {
         switch (lex.peek().type)
@@ -67,6 +65,18 @@ public:
             lex.next();
             auto initializer = parse_initializer();
             name->initializer = name.merge(initializer);
+            expect(token_type::semicolon);
+        }
+        break;
+        case token_type::open_brace:
+        { //function definition
+            if (name->type->kind() & type::function_type)
+            {
+                auto body = parse_compound_statement();
+                pooled_object<function_body, base> initializer = make_pooled_object<function_body>();
+                initializer->body = initializer.merge(body);
+                name->initializer = name.merge(initializer);
+            }
         }
         break;
         default:
@@ -104,6 +114,7 @@ public:
     {
         pooled_object<compound_statement, base> res = make_pooled_object<compound_statement>();
         expect(token_type::open_brace);
+        ctx.scope_in();
         while (lex.peek().type != token_type::close_brace)
         {
             switch (lex.peek().type)
@@ -114,6 +125,10 @@ public:
             case token_type::type_unsigned:
             case token_type::type_void:
                 res->declaration_list.push_back(res.merge(parse_declaration()));
+                if (ctx.add_identifier(res->declaration_list.back()) == false)
+                {
+                    error("Duplicated identifier name in current scope", lex.peek());
+                }
                 continue;
             default:;//fall through
             }
@@ -124,6 +139,7 @@ public:
             res->statement_list.push_back(res.merge(parse_statement()));
         }
         expect(token_type::close_brace);
+        ctx.scope_out();
         return res;
     }
 
@@ -132,9 +148,21 @@ public:
         switch (lex.peek().type)
         {
         case token_type::keyword_break:
+            lex.next();
             return make_pooled_object<break_statment>();
         case token_type::keyword_continue:
+            lex.next();
             return make_pooled_object<continue_statement>();
+        case token_type::keyword_return:
+        {
+            lex.next();
+            pooled_object<return_statement, base> retStmt = make_pooled_object<return_statement>();
+            if (lex.peek().type != token_type::semicolon)
+            {
+                retStmt->expr = retStmt.merge(parse_expression());
+            }
+            return std::move(retStmt);
+        }
         default:
             error("Unexpected token in parsing jump statement", lex.peek());
         }
@@ -226,6 +254,47 @@ public:
                 expr->rhs = expr.merge(implicitConv);
             }
         }
+    }
+    //unray-expression:
+    //      identifier
+    //      constant
+    //      string-literal
+    //      ( expression )
+    //      & * + - ~ !
+    //      sizeof
+    bool is_unary_expression_start()
+    {
+        switch (lex.next().type)
+        {
+        case token_type::identifier:
+        case token_type::number_literal:
+        case token_type::string_literal:
+        case token_type::open_parentheses:
+        case token_type::bit_and:
+        case token_type::asterisk:
+        case token_type::plus:
+        case token_type::sub:
+        case token_type::bit_not:
+        case token_type::not_:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    pooled_object<expression, base> parse_assignment_expression()
+    {
+        auto lhs = parse_logical_or_expression();
+        if (lhs->is_unary_expression() &&
+            lex.peek().type == token_type::assign)
+        {
+            auto rhs = parse_logical_or_expression();
+            pooled_object<assignment_expression, base> expr = make_pooled_object<assignment_expression>();
+            expr->lhs = expr.merge(lhs);
+            expr->rhs = expr.merge(rhs);
+            return std::move(expr);
+        }
+        return lhs;
     }
 
     pooled_object<expression, base> parse_expression()

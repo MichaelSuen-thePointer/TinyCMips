@@ -145,7 +145,7 @@ public:
 
     pointer merge(pooled_object& obj)
     {
-        pointer p = obj.base::release();
+        pointer p = obj.release();
         _pool.reserve(_pool.size() + obj._pool.size() + 1);
         _pool.insert(_pool.end(),
                      std::make_move_iterator(obj._pool.begin()),
@@ -159,7 +159,7 @@ public:
     typename pooled_object<T2, TBase2>::pointer
         merge(pooled_object<T2, TBase2>& obj)
     {
-        auto p = obj.base::release();
+        auto p = obj.release();
         _pool.reserve(_pool.size() + obj._pool.size() + 1);
         _pool.insert(_pool.end(),
                      std::make_move_iterator(obj._pool.begin()),

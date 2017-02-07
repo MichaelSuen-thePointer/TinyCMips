@@ -4,12 +4,13 @@
 
 namespace mq
 {
-
 class base
 {
 public:
     virtual ~base() = default;
 };
+
+class parsing_context;
 
 class type : public base
 {
@@ -31,49 +32,9 @@ public:
     }
 };
 
-class parsing_context
-{
-private:
-    using block_scope = std::map<std::u32string, std::unique_ptr<type>>;
-    std::vector<block_scope> identifiers;
-    size_t curr_scope;
-public:
-    parsing_context()
-        : identifiers(1)
-        , curr_scope(0)
-    {
-
-    }
-    type* find_identifier(const std::u32string& name)
-    {
-        auto result = identifiers[curr_scope].find(name);
-        if (result == identifiers[curr_scope].end())
-        {
-            return nullptr;
-        }
-        return result->second.get();
-    }
-    void scope_in()
-    {
-        ++curr_scope;
-        if (curr_scope == identifiers.size())
-        {
-            identifiers.emplace_back();
-        }
-        else
-        {
-            identifiers[curr_scope].clear();
-        }
-    }
-    void scope_out()
-    {
-        --curr_scope;
-    }
-};
-
 class initializer : public base
 {
-    
+
 };
 
 class declaration : public base
@@ -108,6 +69,7 @@ class expression : public base
 public:
     virtual bool is_constant_expression() = 0;
     virtual type* get_type(const parsing_context& ctx) { return nullptr; /*TODO: supress compiler error*/ }
+    virtual bool is_unary_expression() { return false; }
 };
 
 class expression_initializer : public initializer
@@ -138,6 +100,12 @@ class unary_expression : public expression
 {
 public:
     expression* expr;
+
+
+    bool is_unary_expression() override
+    {
+        return true;
+    }
 };
 
 class binary_expression : public expression
@@ -234,6 +202,11 @@ class postfix_expression : public expression
 {
 public:
     expression* expr;
+
+    bool is_unary_expression() override
+    {
+        return true;
+    }
 };
 
 class array_subscription : public postfix_expression
@@ -451,7 +424,7 @@ class logical_or : public binary_expression
 
 };
 
-/*
+
 class assignment_expression : public expression
 {
 public:
@@ -463,7 +436,6 @@ public:
         return false;
     }
 };
-*/
 
 class basic_type : public type
 {
@@ -646,6 +618,13 @@ public:
     std::vector<statement*> statement_list;
 };
 
+class function_body : public initializer
+{
+public:
+    compound_statement* body;
+};
+
+
 class expression_statement : public statement
 {
 public:
@@ -669,17 +648,74 @@ public:
 
 class jump_statement : public statement
 {
-    
+
 };
 
 class break_statment : public jump_statement
 {
-    
+
 };
 
 class continue_statement : public jump_statement
 {
-    
+
+};
+
+class return_statement : public jump_statement
+{
+public:
+    expression* expr;
+};
+
+class parsing_context
+{
+private:
+    using block_scope = std::map<std::u32string, type*>;
+    std::vector<block_scope> identifiers;
+    size_t curr_scope;
+public:
+    parsing_context()
+        : identifiers(1)
+        , curr_scope(0)
+    {
+
+    }
+    type* find_identifier(const std::u32string& name)
+    {
+        size_t iScope = curr_scope;
+        do
+        {
+            auto result = identifiers[iScope].find(name);
+            if (result == identifiers[iScope].end())
+            {
+                iScope--;
+                continue;
+            }
+            return result->second;
+        } while (iScope-- != 0);
+        return nullptr;
+    }
+    void scope_in()
+    {
+        ++curr_scope;
+        if (curr_scope == identifiers.size())
+        {
+            identifiers.emplace_back();
+        }
+        else
+        {
+            identifiers[curr_scope].clear();
+        }
+    }
+    bool add_identifier(declaration* decl)
+    {
+        return identifiers[curr_scope].emplace(decl->name, decl->type).second;
+    }
+
+    void scope_out()
+    {
+        --curr_scope;
+    }
 };
 
 }
